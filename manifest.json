@@ -1,0 +1,10 @@
+{
+  "manifest_version": 3,
+  "name": "Paragraph Counter",
+  "description": "Counts words on a hovered paragraph element",
+  "version": "1.0",
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": "paragraph_counter.png"
+  }
+}

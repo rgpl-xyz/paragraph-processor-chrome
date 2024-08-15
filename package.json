@@ -1,0 +1,19 @@
+{
+  "name": "paragraph.counter",
+  "version": "1.0.0",
+  "description": "Counts words on a hovered paragraph element",
+  "main": "popup.html",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rgpl-xyz/paragraph.counter.git"
+  },
+  "author": "RGPL",
+  "license": "GPL-3.0-or-later",
+  "bugs": {
+    "url": "https://github.com/rgpl-xyz/paragraph.counter/issues"
+  },
+  "homepage": "https://github.com/rgpl-xyz/paragraph.counter#readme",
+  "devDependencies": {
+    "chrome-types": "^0.1.297"
+  }
+}
