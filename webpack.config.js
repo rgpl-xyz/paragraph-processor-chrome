@@ -5,7 +5,8 @@ module.exports = {
   mode: 'production',
   entry: {
     content: './src/scripts/content.ts',
-    popup: './src/popup/popup.ts', // Only if you have a popup script
+    background: './src/scripts/background.ts',
+    popup: './src/popup/popup.ts',
   },
   output: {
     filename: '[name].js',

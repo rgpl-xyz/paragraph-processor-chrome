@@ -60,6 +60,12 @@ function createShadowStyles() {
        margin-right: auto;
        margin-left: 5px;
     }
+
+    .highlight {
+      text-decoration: underline;
+      text-decoration-style: wavy;
+      text-decoration-color: red;
+    }
   `;
 }
 
@@ -97,16 +103,26 @@ function attachShadowToParagraphs() {
     // Create word counter element
     const wordCounter = createWordCounter(paragraph);
 
+    // Add the "cloned" paragraph content to the shadow DOM
+    const shadowContent = createParagraphShadowContent(paragraph);
+
     let isPinned = false;
 
     // Toggle pinned state on click
-    pushpinButton.addEventListener("click", () => {
+    pushpinButton.addEventListener("click", async () => {
       isPinned = !isPinned;
       
       if (isPinned) {
         shadowContainer.style.display = "block";
-        wordCounter.style.display = "block";        
+        wordCounter.style.display = "block";
         pushpinButton.style.transform = "rotate(0deg) translate(0, -9%)";
+
+        const useNLP = await getUseNLPFlag();
+        if (useNLP) {
+          // Send the paragraph content to the background script when pinned
+          callNlpApi(paragraph, shadowContent);
+        }
+
       } else {
         shadowContainer.style.display = "none";
         wordCounter.style.display = "none";
@@ -121,9 +137,6 @@ function attachShadowToParagraphs() {
 
     // Append actionContainer to shadowRoot
     shadowRoot.appendChild(actionContainer);
-
-    // Add the "cloned" paragraph content to the shadow DOM
-    const shadowContent = createParagraphShadowContent(paragraph);
     shadowRoot.appendChild(shadowContent);
 
     // Append shadowContainer to the paragraph
@@ -159,6 +172,35 @@ const observer = new MutationObserver(() => {
 });
 
 observer.observe(document.body, { childList: true, subtree: true });
+
+function callNlpApi(paragraph: HTMLElement, shadowContent: HTMLDivElement) {
+  const content = paragraph.textContent || "";
+  chrome.runtime.sendMessage({ action: 'fetchData', raw: content }, (response: {success: boolean, error: string, data: Response}) => {
+    if (response.success) {
+      const values = response.data.values;
+      const noun_phrases = values.flatMap((value) => value.data.noun_phrases);
+
+      // Create a regular expression that matches any of the noun phrases
+      // (case insensitive). We escape any special characters in the phrase
+      // so that it can be used as part of a regex.
+      const regex = new RegExp(`\\b(${noun_phrases.map(phrase => phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})\\b`, 'gi');
+
+      // Replace the matched noun phrases with a highlighted span
+      shadowContent.innerHTML = shadowContent.innerHTML.replace(regex, `<span class="highlight">$1</span>`);
+
+    } else {
+      console.error("Fetch error:", response.error);
+    }
+  });
+}
+
+async function getUseNLPFlag(): Promise<boolean> {
+  return new Promise((resolve) => {
+      chrome.storage.sync.get('useNLP', (data) => {
+          resolve(data.useNLP || false);
+      });
+  });
+}
 
 function createActionContainer() {
   const actionContainer = document.createElement("div");
@@ -227,4 +269,17 @@ function createShadowContainer(paragraph: HTMLElement) {
   shadowContainer.style.boxSizing = "border-box";
 
   return shadowContainer;
+}
+
+interface Data {
+  noun_phrases: string[];
+}
+
+interface Value {
+  recordId: string;
+  data: Data;
+}
+
+interface Response {
+  values: Value[];
 }

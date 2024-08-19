@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Paragraph Counter",
-  "description": "Counts words on a hovered paragraph element",
+  "description": "Processes text from paragraphs on web pages using Natural Language Processing (NLP). It extracts noun phrases from the text and highlights them dynamically using a shadow DOM.",
   "version": "1.0",
   "action": {
     "default_popup": "popup.html"
@@ -13,8 +13,16 @@
     "128": "images/icon-128.png"
   },
   "permissions": [
-    "activeTab"
+    "activeTab",
+    "scripting",
+    "storage"
   ],
+  "host_permissions": [
+    "http://localhost:8000/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
   "content_scripts": [
     {
       "js": ["content.js"],
