@@ -21,12 +21,12 @@ This project is a Chrome extension that processes text from paragraphs on web pa
 1. Clone these repositories:
 
     ```bash
-    git clone https://github.com/rgpl-xyz/paragraph.counter.git
-    cd paragraph.counter
+    git clone https://github.com/rgpl-xyz/paragraph-processor-chrome
+    cd paragraph-processor-chrome
     npm run build # generates a ./dist folder
 
      # optional backend
-    git clone https://github.com/rgpl-xyz/rgpl-spacy-api.git
+    git clone https://github.com/rgpl-xyz/nlp-spacy-api.git
     # refer to the repository's ReadMe on how to start the backend
     ```
 
