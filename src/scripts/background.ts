@@ -216,6 +216,11 @@ function cleanupCache() {
   } else if (expiredCount > 0) {
     console.log(`Cache cleanup: removed ${expiredCount} expired entries`);
   }
+  
+  // Performance monitoring: log cache statistics
+  if (process.env.NODE_ENV === 'development') {
+    console.log(`Cache stats: ${requestCache.size}/${MAX_CACHE_SIZE} entries, ${pendingRequests.size} pending requests`);
+  }
 }
 
 // Run cache cleanup every 10 minutes

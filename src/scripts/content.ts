@@ -328,16 +328,21 @@ function callNlpApi(paragraph: HTMLElement, shadowContent: HTMLDivElement) {
 
     } else {
       console.error("Fetch error:", response.error);
-      // Remove loading state and show error
+      // Remove loading state and show user-friendly error
       const loadingElement = shadowContent.querySelector('#nlp-loading');
       if (loadingElement) {
         loadingElement.remove();
       }
       
       const errorElement = document.createElement('div');
-      errorElement.style.color = '#ff0000';
+      errorElement.style.color = '#ff6b6b';
       errorElement.style.fontStyle = 'italic';
-      errorElement.textContent = 'Error processing text';
+      errorElement.style.fontSize = '12px';
+      errorElement.style.padding = '5px';
+      errorElement.style.backgroundColor = '#ffe6e6';
+      errorElement.style.borderRadius = '3px';
+      errorElement.style.marginTop = '5px';
+      errorElement.textContent = 'Unable to process text. Please check your connection or try again.';
       shadowContent.appendChild(errorElement);
     }
   });
