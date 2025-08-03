@@ -69,13 +69,29 @@ function createShadowStyles() {
   `;
 }
 
-// Function to create and attach shadow DOM for each paragraph
-function attachShadowToParagraphs() {
-  const paragraphs = document.querySelectorAll<HTMLElement>("p:not([data-shadow-attached])");
+// Shared styles element - created once and cloned
+let sharedStylesElement: HTMLStyleElement | null = null;
 
-  paragraphs.forEach(paragraph => {
+function getSharedStylesElement(): HTMLStyleElement {
+  if (!sharedStylesElement) {
+    sharedStylesElement = document.createElement('style');
+    sharedStylesElement.textContent = createShadowStyles();
+  }
+  return sharedStylesElement.cloneNode(true) as HTMLStyleElement;
+}
+
+// Function to process a single paragraph with lazy shadow DOM creation
+function processParagraph(paragraph: HTMLElement) {
+  // Only add hover listeners initially - create shadow DOM on first hover
+  let shadowContainer: HTMLElement | null = null;
+  let isPinned = false;
+  let isInitialized = false;
+
+  const initializeShadowDOM = () => {
+    if (isInitialized) return;
+    
     // Create a container for the shadow DOM content
-    const shadowContainer = createShadowContainer(paragraph);
+    shadowContainer = createShadowContainer(paragraph);
 
     // Create a shadow host
     const shadowHost = createShadowHost(paragraph);
@@ -86,9 +102,8 @@ function attachShadowToParagraphs() {
     // Attach shadow DOM to the shadow host
     const shadowRoot = shadowHost.attachShadow({ mode: "open" });
 
-    // Create a style element for the Shadow DOM
-    const style = document.createElement('style');
-    style.textContent = createShadowStyles();
+    // Use shared styles instead of creating new ones
+    const style = getSharedStylesElement();
     shadowRoot.appendChild(style);
 
     // Create action title for the action container
@@ -106,14 +121,12 @@ function attachShadowToParagraphs() {
     // Add the "cloned" paragraph content to the shadow DOM
     const shadowContent = createParagraphShadowContent(paragraph);
 
-    let isPinned = false;
-
     // Toggle pinned state on click
     pushpinButton.addEventListener("click", async () => {
       isPinned = !isPinned;
       
       if (isPinned) {
-        shadowContainer.style.display = "block";
+        shadowContainer!.style.display = "block";
         wordCounter.style.display = "block";
         pushpinButton.style.transform = "rotate(0deg) translate(0, -9%)";
 
@@ -124,7 +137,7 @@ function attachShadowToParagraphs() {
         }
 
       } else {
-        shadowContainer.style.display = "none";
+        shadowContainer!.style.display = "none";
         wordCounter.style.display = "none";
         pushpinButton.style.transform = "rotate(45deg)"; // change "unpinned" icon
       }
@@ -143,23 +156,66 @@ function attachShadowToParagraphs() {
     paragraph.style.position = "relative";
     paragraph.appendChild(shadowContainer);
 
-    // Add attribute to mark paragraph as processed
-    paragraph.setAttribute("data-shadow-attached", "true");
+    isInitialized = true;
+  };
 
-    // Show shadowContainer on hover if not pinned
-    paragraph.addEventListener("mouseover", () => {
-      if (!isPinned) {
-        shadowContainer.style.display = "block";
+  // Show shadowContainer on hover if not pinned
+  paragraph.addEventListener("mouseover", () => {
+    if (!isPinned) {
+      if (!isInitialized) {
+        initializeShadowDOM();
       }
-    });
-
-    // Hide shadowContainer when mouse leaves if not pinned
-    paragraph.addEventListener("mouseout", () => {
-      if (!isPinned) {
-        shadowContainer.style.display = "none";
-      }
-    });
+      shadowContainer!.style.display = "block";
+    }
   });
+
+  // Hide shadowContainer when mouse leaves if not pinned
+  paragraph.addEventListener("mouseout", () => {
+    if (!isPinned && isInitialized) {
+      shadowContainer!.style.display = "none";
+    }
+  });
+
+  // Add attribute to mark paragraph as processed
+  paragraph.setAttribute("data-shadow-attached", "true");
+}
+
+// Function to create and attach shadow DOM for each paragraph
+function attachShadowToParagraphs() {
+  const paragraphs = document.querySelectorAll<HTMLElement>("p:not([data-shadow-attached])");
+  
+  if (paragraphs.length === 0) return;
+  
+  // Process paragraphs in batches to avoid blocking the UI
+  const batchSize = 20; // Increased batch size since we're not creating shadow DOM immediately
+  const batches: HTMLElement[][] = [];
+  
+  for (let i = 0; i < paragraphs.length; i += batchSize) {
+    batches.push(Array.from(paragraphs).slice(i, i + batchSize));
+  }
+  
+  let currentBatch = 0;
+  
+  function processNextBatch() {
+    if (currentBatch >= batches.length) return;
+    
+    const batch = batches[currentBatch];
+    
+    if (typeof window.requestIdleCallback !== 'undefined') {
+      requestIdleCallback(() => {
+        batch.forEach(processParagraph);
+        currentBatch++;
+        processNextBatch();
+      }, { timeout: 1000 });
+    } else {
+      // Fallback for browsers without requestIdleCallback
+      batch.forEach(processParagraph);
+      currentBatch++;
+      processNextBatch();
+    }
+  }
+  
+  processNextBatch();
 }
 
 // Attach shadow DOM to paragraphs immediately
@@ -173,23 +229,48 @@ const observer = new MutationObserver(() => {
 
 observer.observe(document.body, { childList: true, subtree: true });
 
+// Cache for regex patterns to avoid recreating them
+const regexCache = new Map<string, RegExp>();
+
 function callNlpApi(paragraph: HTMLElement, shadowContent: HTMLDivElement) {
   const content = paragraph.textContent || "";
+  
+  // Show loading state
+  shadowContent.innerHTML += '<div style="color: #666; font-style: italic;">Processing...</div>';
+  
   chrome.runtime.sendMessage({ action: 'fetchData', raw: content }, (response: {success: boolean, error: string, data: Response}) => {
     if (response.success) {
       const values = response.data.values;
       const noun_phrases = values.flatMap((value) => value.data.noun_phrases);
 
-      // Create a regular expression that matches any of the noun phrases
-      // (case insensitive). We escape any special characters in the phrase
-      // so that it can be used as part of a regex.
-      const regex = new RegExp(`\\b(${noun_phrases.map(phrase => phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})\\b`, 'gi');
+      if (noun_phrases.length === 0) {
+        shadowContent.innerHTML = shadowContent.innerHTML.replace('<div style="color: #666; font-style: italic;">Processing...</div>', '');
+        return;
+      }
 
-      // Replace the matched noun phrases with a highlighted span
-      shadowContent.innerHTML = shadowContent.innerHTML.replace(regex, `<span class="highlight">$1</span>`);
+      // Create cache key for this set of noun phrases
+      const cacheKey = noun_phrases.sort().join('|');
+      
+      // Get or create regex pattern
+      let regex = regexCache.get(cacheKey);
+      if (!regex) {
+        // Create a regular expression that matches any of the noun phrases
+        // (case insensitive). We escape any special characters in the phrase
+        // so that it can be used as part of a regex.
+        const escapedPhrases = noun_phrases.map(phrase => phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+        regex = new RegExp(`\\b(${escapedPhrases.join('|')})\\b`, 'gi');
+        regexCache.set(cacheKey, regex);
+      }
+
+      // Remove loading state and apply highlighting
+      const originalContent = shadowContent.innerHTML.replace('<div style="color: #666; font-style: italic;">Processing...</div>', '');
+      shadowContent.innerHTML = originalContent.replace(regex, `<span class="highlight">$1</span>`);
 
     } else {
       console.error("Fetch error:", response.error);
+      // Remove loading state and show error
+      shadowContent.innerHTML = shadowContent.innerHTML.replace('<div style="color: #666; font-style: italic;">Processing...</div>', 
+        '<div style="color: #ff0000; font-style: italic;">Error processing text</div>');
     }
   });
 }
