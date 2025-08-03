@@ -14,7 +14,9 @@
   },
   "homepage": "https://github.com/rgpl-xyz/paragraph.counter#readme",
   "scripts": {
-    "build": "webpack --mode production"
+    "build": "webpack --mode production",
+    "build:dev": "webpack --mode development",
+    "dev": "webpack --mode development --watch"
   },
   "devDependencies": {
     "@tsconfig/recommended": "^1.0.7",
@@ -22,6 +24,7 @@
     "@types/node": "^24.1.0",
     "chrome-types": "^0.1.298",
     "copy-webpack-plugin": "^13.0.0",
+    "dotenv-webpack": "^8.1.1",
     "ts-loader": "^9.5.1",
     "typescript": "^5.5.4",
     "webpack": "^5.93.0",

@@ -1,8 +1,12 @@
 const path = require('path');
 const CopyWebpackPlugin = require('copy-webpack-plugin');
+const Dotenv = require('dotenv-webpack');
 
-module.exports = {
-  mode: 'production',
+module.exports = (env, argv) => {
+  const isProduction = argv.mode === 'production';
+  
+  return {
+    mode: argv.mode || 'production',
   entry: {
     content: './src/scripts/content.ts',
     background: './src/scripts/background.ts',
@@ -26,6 +30,15 @@ module.exports = {
     ],
   },
   plugins: [
+    new Dotenv({
+      systemvars: true, // Load all system environment variables as well
+      safe: false, // Don't require all variables to be set
+      defaults: false, // Don't load .env.defaults
+      // Don't override NODE_ENV if it's already set by webpack
+      ignoreStub: true,
+      // Exclude NODE_ENV from being processed by dotenv-webpack
+      allowEmptyValues: true,
+    }),
     new CopyWebpackPlugin({
       patterns: [
         { from: 'manifest.json', to: '' }, // Copy manifest.json to the root output directory
@@ -34,4 +47,5 @@ module.exports = {
       ],
     }),
   ],
+  };
 };
