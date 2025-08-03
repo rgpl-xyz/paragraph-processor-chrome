@@ -65,26 +65,59 @@ This will install all the required dependencies including:
 - Chrome types for development
 - Copy webpack plugin for asset management
 
-### 3. Build the Extension
+### 3. Environment Configuration (Optional)
+
+The extension supports environment variables for configuration. This is useful for different environments (development, staging, production).
+
+#### Setup Environment Variables:
+
+1. **Copy the example file**:
+   ```bash
+   cp .env.example .env
+   ```
+
+2. **Edit the `.env` file** with your configuration:
+   ```bash
+   # API Configuration
+   API_BASE_URL=http://localhost:8080
+   API_ENDPOINT=/noun_phrases
+   API_TIMEOUT=10000
+   API_RETRY_ATTEMPTS=3
+   API_RETRY_DELAY=1000
+
+   # Cache Configuration
+   CACHE_DURATION=300000
+   MAX_CACHE_SIZE=1000
+
+   # Development Configuration
+   NODE_ENV=development
+   ```
+
+3. **Environment Variables Reference**:
+   - `API_BASE_URL`: Base URL for the NLP API (default: `http://localhost:8080`)
+   - `API_ENDPOINT`: API endpoint for noun phrase extraction (default: `/noun_phrases`)
+   - `API_TIMEOUT`: Request timeout in milliseconds (default: `10000`)
+   - `API_RETRY_ATTEMPTS`: Number of retry attempts for failed requests (default: `3`)
+   - `API_RETRY_DELAY`: Delay between retries in milliseconds (default: `1000`)
+   - `CACHE_DURATION`: Cache entry lifetime in milliseconds (default: `300000` = 5 minutes)
+   - `MAX_CACHE_SIZE`: Maximum number of cached entries (default: `1000`)
+   - `NODE_ENV`: Environment mode (default: `development`)
+
+**Note**: The `.env` file is ignored by git to prevent committing sensitive data. Make sure to create your own `.env` file based on `.env.example`.
+
+### 4. Build the Extension
 
 #### For Production Build:
 ```bash
 npm run build
 ```
 
-#### For Development (with watch mode):
-If you want to automatically rebuild when files change, you can add a watch script to your `package.json`:
-
-```json
-{
-  "scripts": {
-    "build": "webpack --mode production",
-    "dev": "webpack --mode development --watch"
-  }
-}
+#### For Development Build:
+```bash
+npm run build:dev
 ```
 
-Then run:
+#### For Development (with watch mode):
 ```bash
 npm run dev
 ```
