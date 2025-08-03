@@ -232,11 +232,63 @@ observer.observe(document.body, { childList: true, subtree: true });
 // Cache for regex patterns to avoid recreating them
 const regexCache = new Map<string, RegExp>();
 
+// Function to safely highlight text nodes without breaking HTML structure
+function highlightTextNodes(element: HTMLElement, regex: RegExp) {
+  const walker = document.createTreeWalker(
+    element,
+    NodeFilter.SHOW_TEXT,
+    null
+  );
+  
+  const textNodes: Text[] = [];
+  let node;
+  while (node = walker.nextNode()) {
+    textNodes.push(node as Text);
+  }
+  
+  textNodes.forEach(textNode => {
+    const text = textNode.textContent || '';
+    const matches = [...text.matchAll(regex)];
+    
+    if (matches.length > 0) {
+      const fragment = document.createDocumentFragment();
+      let lastIndex = 0;
+      
+      matches.forEach(match => {
+        const matchStart = match.index!;
+        const matchEnd = matchStart + match[0].length;
+        
+        if (matchStart > lastIndex) {
+          fragment.appendChild(document.createTextNode(text.slice(lastIndex, matchStart)));
+        }
+        
+        const highlight = document.createElement('span');
+        highlight.className = 'highlight';
+        highlight.textContent = match[0];
+        fragment.appendChild(highlight);
+        
+        lastIndex = matchEnd;
+      });
+      
+      if (lastIndex < text.length) {
+        fragment.appendChild(document.createTextNode(text.slice(lastIndex)));
+      }
+      
+      textNode.parentNode?.replaceChild(fragment, textNode);
+    }
+  });
+}
+
 function callNlpApi(paragraph: HTMLElement, shadowContent: HTMLDivElement) {
   const content = paragraph.textContent || "";
   
-  // Show loading state
-  shadowContent.innerHTML += '<div style="color: #666; font-style: italic;">Processing...</div>';
+  // Show loading state with unique ID
+  const loadingElement = document.createElement('div');
+  loadingElement.id = 'nlp-loading';
+  loadingElement.style.color = '#666';
+  loadingElement.style.fontStyle = 'italic';
+  loadingElement.textContent = 'Processing...';
+  shadowContent.appendChild(loadingElement);
   
   chrome.runtime.sendMessage({ action: 'fetchData', raw: content }, (response: {success: boolean, error: string, data: Response}) => {
     if (response.success) {
@@ -244,7 +296,10 @@ function callNlpApi(paragraph: HTMLElement, shadowContent: HTMLDivElement) {
       const noun_phrases = values.flatMap((value) => value.data.noun_phrases);
 
       if (noun_phrases.length === 0) {
-        shadowContent.innerHTML = shadowContent.innerHTML.replace('<div style="color: #666; font-style: italic;">Processing...</div>', '');
+        const loadingElement = shadowContent.querySelector('#nlp-loading');
+        if (loadingElement) {
+          loadingElement.remove();
+        }
         return;
       }
 
@@ -262,15 +317,28 @@ function callNlpApi(paragraph: HTMLElement, shadowContent: HTMLDivElement) {
         regexCache.set(cacheKey, regex);
       }
 
-      // Remove loading state and apply highlighting
-      const originalContent = shadowContent.innerHTML.replace('<div style="color: #666; font-style: italic;">Processing...</div>', '');
-      shadowContent.innerHTML = originalContent.replace(regex, `<span class="highlight">$1</span>`);
+      // Remove loading state
+      const loadingElement = shadowContent.querySelector('#nlp-loading');
+      if (loadingElement) {
+        loadingElement.remove();
+      }
+
+      // Apply highlighting to text nodes only to preserve HTML structure
+      highlightTextNodes(shadowContent, regex);
 
     } else {
       console.error("Fetch error:", response.error);
       // Remove loading state and show error
-      shadowContent.innerHTML = shadowContent.innerHTML.replace('<div style="color: #666; font-style: italic;">Processing...</div>', 
-        '<div style="color: #ff0000; font-style: italic;">Error processing text</div>');
+      const loadingElement = shadowContent.querySelector('#nlp-loading');
+      if (loadingElement) {
+        loadingElement.remove();
+      }
+      
+      const errorElement = document.createElement('div');
+      errorElement.style.color = '#ff0000';
+      errorElement.style.fontStyle = 'italic';
+      errorElement.textContent = 'Error processing text';
+      shadowContent.appendChild(errorElement);
     }
   });
 }

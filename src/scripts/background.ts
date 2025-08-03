@@ -1,18 +1,57 @@
+// Type definitions
+interface NLPRequestData {
+  text: string;
+  language: string;
+}
+
+interface NLPRequestValue {
+  recordId: string;
+  data: NLPRequestData;
+}
+
+interface NLPRequestBody {
+  values: NLPRequestValue[];
+}
+
+interface NLPResponse {
+  // Define based on actual API response structure
+  // For now, using a generic structure that can be refined
+  [key: string]: unknown;
+}
+
+interface CacheEntry {
+  data: NLPResponse;
+  timestamp: number;
+}
+
+interface MessageRequest {
+  action: string;
+  raw?: string;
+}
+
+interface MessageResponse {
+  success: boolean;
+  data?: NLPResponse;
+  error?: string;
+  details?: string;
+}
+
 // Configuration
 const API_CONFIG = {
-  baseUrl: 'http://localhost:8080',
-  endpoint: '/noun_phrases',
-  timeout: 10000, // 10 seconds
-  retryAttempts: 3,
-  retryDelay: 1000, // 1 second
+  baseUrl: process.env.API_BASE_URL || 'http://localhost:8080',
+  endpoint: process.env.API_ENDPOINT || '/noun_phrases',
+  timeout: parseInt(process.env.API_TIMEOUT || '10000'), // 10 seconds
+  retryAttempts: parseInt(process.env.API_RETRY_ATTEMPTS || '3'),
+  retryDelay: parseInt(process.env.API_RETRY_DELAY || '1000'), // 1 second
 };
 
 // Cache for processed requests
-const requestCache = new Map<string, { data: any; timestamp: number }>();
-const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+const requestCache = new Map<string, CacheEntry>();
+const CACHE_DURATION = parseInt(process.env.CACHE_DURATION || '300000'); // 5 minutes
+const MAX_CACHE_SIZE = parseInt(process.env.MAX_CACHE_SIZE || '1000'); // Maximum number of cached entries
 
 // In-flight requests to prevent duplicates
-const pendingRequests = new Map<string, Promise<any>>();
+const pendingRequests = new Map<string, Promise<NLPResponse>>();
 
 // Default headers
 const DEFAULT_HEADERS = {
@@ -25,13 +64,27 @@ const DEFAULT_HEADERS = {
 };
 
 // Utility function to create a cache key
-function createCacheKey(text: string): string {
-  return btoa(text.trim().toLowerCase()).slice(0, 50); // Truncate to avoid extremely long keys
+async function createCacheKey(text: string): Promise<string> {
+  const normalized = text.trim().toLowerCase();
+  const encoder = new TextEncoder();
+  const data = encoder.encode(normalized);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
 // Utility function to check if cache entry is still valid
 function isCacheValid(timestamp: number): boolean {
   return Date.now() - timestamp < CACHE_DURATION;
+}
+
+// Utility function to remove oldest cache entry when at capacity
+function removeOldestCacheEntry(): void {
+  if (requestCache.size >= MAX_CACHE_SIZE) {
+    const oldestKey = Array.from(requestCache.entries())
+      .sort((a, b) => a[1].timestamp - b[1].timestamp)[0][0];
+    requestCache.delete(oldestKey);
+  }
 }
 
 // Utility function to delay execution
@@ -70,8 +123,8 @@ async function fetchWithRetry(url: string, options: RequestInit, retries: number
 }
 
 // Process text through NLP API
-async function processTextWithNLP(text: string): Promise<any> {
-  const cacheKey = createCacheKey(text);
+async function processTextWithNLP(text: string): Promise<NLPResponse> {
+  const cacheKey = await createCacheKey(text);
   
   // Check cache first
   const cached = requestCache.get(cacheKey);
@@ -89,7 +142,7 @@ async function processTextWithNLP(text: string): Promise<any> {
   // Create new request
   const requestPromise = (async () => {
     try {
-      const requestBody = {
+      const requestBody: NLPRequestBody = {
         values: [
           {
             recordId: "a1",
@@ -113,9 +166,10 @@ async function processTextWithNLP(text: string): Promise<any> {
         requestOptions
       );
       
-      const result = await response.json();
+      const result = await response.json() as NLPResponse;
       
       // Cache the successful result
+      removeOldestCacheEntry(); // Remove oldest entry if at capacity
       requestCache.set(cacheKey, {
         data: result,
         timestamp: Date.now()
@@ -137,18 +191,55 @@ async function processTextWithNLP(text: string): Promise<any> {
 // Clean up old cache entries periodically
 function cleanupCache() {
   const now = Date.now();
+  let expiredCount = 0;
+  
+  // Remove expired entries
   for (const [key, value] of requestCache.entries()) {
     if (!isCacheValid(value.timestamp)) {
       requestCache.delete(key);
+      expiredCount++;
     }
+  }
+  
+  // If still over limit after removing expired entries, remove oldest entries
+  if (requestCache.size >= MAX_CACHE_SIZE) {
+    const entriesToRemove = requestCache.size - MAX_CACHE_SIZE + 1; // +1 to make room for new entry
+    const sortedEntries = Array.from(requestCache.entries())
+      .sort((a, b) => a[1].timestamp - b[1].timestamp)
+      .slice(0, entriesToRemove);
+    
+    for (const [key] of sortedEntries) {
+      requestCache.delete(key);
+    }
+    
+    console.log(`Cache cleanup: removed ${expiredCount} expired entries and ${entriesToRemove} oldest entries`);
+  } else if (expiredCount > 0) {
+    console.log(`Cache cleanup: removed ${expiredCount} expired entries`);
   }
 }
 
 // Run cache cleanup every 10 minutes
-setInterval(cleanupCache, 10 * 60 * 1000);
+const cleanupIntervalId = setInterval(cleanupCache, 10 * 60 * 1000);
+
+// Add cleanup on extension unload
+self.addEventListener('unload', () => {
+  clearInterval(cleanupIntervalId);
+  // Clear all caches and pending requests
+  requestCache.clear();
+  pendingRequests.clear();
+});
+
+// Also handle Chrome extension shutdown
+chrome.runtime.onSuspend.addListener(() => {
+  clearInterval(cleanupIntervalId);
+  // Clear all caches and pending requests
+  requestCache.clear();
+  pendingRequests.clear();
+  console.log('Extension suspended, cleanup completed');
+});
 
 // Message listener with optimized handling
-chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((request: MessageRequest, _sender, sendResponse: (response: MessageResponse) => void) => {
   if (request.action === 'fetchData') {
     // Validate input
     if (!request.raw || typeof request.raw !== 'string') {
